@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { MedicalAnalysis, AnalysisDimension, Language, ReportType } from '../types';
 import { CyberCard } from './CyberCard';
 import { useStore } from '../store';
@@ -34,6 +34,9 @@ const SeverityBadge: React.FC<{ severity: AnalysisDimension['severity']; languag
 export const MedicalAnalysisView: React.FC<MedicalAnalysisViewProps> = ({ messageId, analysis, onRegenerate }) => {
   const { user, language } = useStore();
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
 
   const t = {
     ZH: { 
@@ -45,16 +48,8 @@ export const MedicalAnalysisView: React.FC<MedicalAnalysisViewProps> = ({ messag
       feedback: '反馈质量',
       conclusionLabel: '核心结论',
       highlightsLabel: '关键重点',
-      detected: {
-        [ReportType.BLOOD]: '血液指标',
-        [ReportType.CT]: 'CT 影像',
-        [ReportType.MRI]: 'MRI 核磁',
-        [ReportType.ULTRASOUND]: '超声检查',
-        [ReportType.TUMOR_MARKER]: '肿瘤标志',
-        [ReportType.LIVER_FUNCTION]: '肝功检查',
-        [ReportType.URINE]: '尿液常规',
-        [ReportType.UNKNOWN]: '通用分析'
-      }
+      audioPlay: '播报摘要',
+      audioStop: '停止播放'
     }
   }.ZH;
 
@@ -65,6 +60,65 @@ export const MedicalAnalysisView: React.FC<MedicalAnalysisViewProps> = ({ messag
       await submitFeedback(messageId, user.id, type);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const decode = (base64: string) => {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  };
+
+  const decodeAudioData = async (
+    data: Uint8Array,
+    ctx: AudioContext,
+    sampleRate: number,
+    numChannels: number,
+  ): Promise<AudioBuffer> => {
+    const dataInt16 = new Int16Array(data.buffer);
+    const frameCount = dataInt16.length / numChannels;
+    const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+    for (let channel = 0; channel < numChannels; channel++) {
+      const channelData = buffer.getChannelData(channel);
+      for (let i = 0; i < frameCount; i++) {
+        channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+      }
+    }
+    return buffer;
+  };
+
+  const playSummaryAudio = async () => {
+    if (!analysis.summaryAudio) return;
+    
+    if (isPlaying) {
+      sourceNodeRef.current?.stop();
+      setIsPlaying(false);
+      return;
+    }
+
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      
+      const audioBytes = decode(analysis.summaryAudio);
+      const audioBuffer = await decodeAudioData(audioBytes, audioContextRef.current, 24000, 1);
+      
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContextRef.current.destination);
+      source.onended = () => setIsPlaying(false);
+      
+      sourceNodeRef.current = source;
+      source.start();
+      setIsPlaying(true);
+    } catch (e) {
+      console.error("Playback failed:", e);
     }
   };
 
@@ -93,10 +147,30 @@ export const MedicalAnalysisView: React.FC<MedicalAnalysisViewProps> = ({ messag
       </div>
 
       {/* Executive Summary */}
-      <CyberCard className="bg-gradient-to-br from-[#e94560]/15 to-transparent border-l-8 border-l-[#e94560] shadow-[0_20px_40px_rgba(0,0,0,0.3)]">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="w-2 h-8 bg-[#e94560] rounded-full animate-pulse"></div>
-          <h3 className="font-orbitron text-xl text-white uppercase tracking-[0.2em]">{t.summary}</h3>
+      <CyberCard className="relative bg-gradient-to-br from-[#e94560]/15 to-transparent border-l-8 border-l-[#e94560] shadow-[0_20px_40px_rgba(0,0,0,0.3)]">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-2 h-8 bg-[#e94560] rounded-full animate-pulse"></div>
+            <h3 className="font-orbitron text-xl text-white uppercase tracking-[0.2em]">{t.summary}</h3>
+          </div>
+          
+          {analysis.summaryAudio && (
+            <button 
+              onClick={playSummaryAudio}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all border ${
+                isPlaying ? 'bg-[#e94560] border-[#e94560] text-white shadow-[0_0_20px_rgba(233,69,96,0.4)]' : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+              }`}
+            >
+              <svg className={`w-4 h-4 ${isPlaying ? 'animate-pulse' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {isPlaying ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                )}
+              </svg>
+              <span className="text-[10px] font-orbitron uppercase tracking-widest">{isPlaying ? t.audioStop : t.audioPlay}</span>
+            </button>
+          )}
         </div>
         <p className="text-white/90 leading-relaxed text-lg font-medium">{analysis.summary}</p>
       </CyberCard>

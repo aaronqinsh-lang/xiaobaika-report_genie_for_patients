@@ -53,6 +53,7 @@ export interface MedicalAnalysis {
   summary: string;
   disclaimer: string;
   generatedIllustration?: string; // AI 生成的视觉图
+  summaryAudio?: string; // Base64 PCM audio data for TTS
 }
 
 export interface Message {

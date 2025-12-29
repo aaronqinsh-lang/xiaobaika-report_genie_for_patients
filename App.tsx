@@ -184,7 +184,7 @@ const App: React.FC = () => {
   }.ZH;
 
   return (
-    <div className="min-h-screen pb-10 bg-[#0a0a12]">
+    <div className="min-h-screen pb-10 bg-[#0a0a12] relative overflow-hidden">
       <header className="sticky top-0 z-50 glass-morphism border-b border-white/5 py-4 px-6 mb-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setView('main')}>
@@ -216,7 +216,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6">
+      <main className="max-w-7xl mx-auto px-6 relative z-10">
         {error && (
           <div className="mb-8 p-4 bg-red-900/40 border border-red-500/30 rounded-2xl text-red-200 text-sm flex justify-between items-center animate-in fade-in slide-in-from-top-2">
             <div className="flex items-center space-x-3">
@@ -252,15 +252,17 @@ const App: React.FC = () => {
 
             <div className="lg:col-span-9">
               {isAnalyzing ? (
-                <div className="h-[65vh] flex flex-col items-center justify-center text-center">
-                  <div className="relative w-40 h-40 mb-12">
-                    <div className="absolute inset-0 rounded-full border-[2px] border-[#e94560]/5 border-t-[#e94560] animate-spin"></div>
+                <div className="h-[65vh] flex flex-col items-center justify-center text-center relative">
+                  <div className="scan-line"></div>
+                  <div className="relative w-48 h-48 mb-12">
+                    <div className="absolute inset-0 rounded-full border-[3px] border-[#e94560]/10 border-t-[#e94560] animate-spin"></div>
+                    <div className="absolute inset-4 rounded-full border-[1px] border-white/5 animate-reverse-spin" style={{animation: 'spin 4s linear infinite reverse'}}></div>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-2 h-2 bg-[#e94560] rounded-full shadow-[0_0_15px_rgba(233,69,96,1)]"></div>
+                      <div className="w-3 h-3 bg-[#e94560] rounded-full shadow-[0_0_20px_rgba(233,69,96,1)] animate-pulse"></div>
                     </div>
                   </div>
                   <h3 className="font-orbitron text-2xl text-white tracking-[0.3em] uppercase neon-text">解构中...</h3>
-                  <p className="text-white/20 text-[10px] mt-6 uppercase tracking-[0.5em] font-orbitron">AI助手 v4.5</p>
+                  <p className="text-white/20 text-[10px] mt-6 uppercase tracking-[0.5em] font-orbitron">正在建立神经链路... 89%</p>
                 </div>
               ) : currentSession ? (
                 <div className="flex flex-col h-[75vh]">
@@ -276,7 +278,7 @@ const App: React.FC = () => {
                         )}
                         {msg.role === 'user' ? (
                           <div className="flex justify-end mb-4">
-                            <div className="max-w-[80%] bg-[#e94560]/10 border border-[#e94560]/30 rounded-2xl px-5 py-3 text-white/90">
+                            <div className="max-w-[80%] bg-[#e94560]/10 border border-[#e94560]/30 rounded-2xl px-5 py-3 text-white/90 shadow-[0_4px_20px_rgba(233,69,96,0.1)]">
                               {msg.content}
                             </div>
                           </div>
@@ -299,7 +301,7 @@ const App: React.FC = () => {
                     <div ref={chatEndRef} />
                   </div>
 
-                  <CyberCard className="mt-4 p-3 flex items-center space-x-3 border-[#e94560]/20">
+                  <CyberCard className="mt-4 p-3 flex items-center space-x-3 border-[#e94560]/30 shadow-[0_0_30px_rgba(233,69,96,0.1)]">
                     <input 
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
@@ -310,9 +312,9 @@ const App: React.FC = () => {
                     <button 
                       onClick={handleSendMessage}
                       disabled={isThinking || !chatInput.trim()}
-                      className="bg-[#e94560] hover:bg-[#ff5b75] p-2.5 rounded-xl transition-all shadow-lg shadow-[#e94560]/20 disabled:opacity-30"
+                      className="bg-[#e94560] hover:bg-[#ff5b75] p-2.5 rounded-xl transition-all shadow-lg shadow-[#e94560]/20 disabled:opacity-30 group"
                     >
-                      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-5 h-5 text-white transform group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                       </svg>
                     </button>

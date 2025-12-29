@@ -1,23 +1,9 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { MedicalAnalysis, ReportType, AnalysisDimension, Language } from "../types";
 
-export const testConnection = async (): Promise<boolean> => {
-  try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: 'ping',
-    });
-    return !!response.text;
-  } catch (error) {
-    console.error("Connection test failed:", error);
-    return false;
-  }
-};
-
 /**
- * 生成医学概念插图（赛博朋克风格）
+ * Generate medical illustration (Cyber-Noir style)
  */
 const generateMedicalIllustration = async (prompt: string): Promise<string | undefined> => {
   try {
@@ -26,6 +12,11 @@ const generateMedicalIllustration = async (prompt: string): Promise<string | und
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [{ text: `A futuristic, high-tech cyber-noir medical illustration showing: ${prompt}. Glowing neon lines, deep blues and reds, dark atmosphere, clinical but artistic, 16:9 aspect ratio.` }]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "16:9"
+        }
       }
     });
     
@@ -40,6 +31,31 @@ const generateMedicalIllustration = async (prompt: string): Promise<string | und
   return undefined;
 };
 
+/**
+ * Generate TTS Audio for the summary
+ */
+export const generateSummaryAudio = async (text: string): Promise<string | undefined> => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: `用专业且温暖的女性声音播报以下医疗摘要：${text}` }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Kore' },
+          },
+        },
+      },
+    });
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  } catch (e) {
+    console.error("TTS generation failed:", e);
+    return undefined;
+  }
+};
+
 export const analyzeMedicalReport = async (
   imageContent: string, // base64
   selectedType: ReportType,
@@ -50,7 +66,7 @@ export const analyzeMedicalReport = async (
   const targetLang = language === Language.ZH ? 'Chinese (Simplified)' : 'English';
   const systemInstruction = `
     你是“小白卡助手”，一个顶尖的赛博医学分析专家。
-    任务：提供极其详尽的报告解读。
+    任务：基于提供的报告图像，提供极其详尽的报告解读。
     
     结构要求 (JSON 格式):
     1. reportType: 确定的报告类型。
@@ -65,7 +81,7 @@ export const analyzeMedicalReport = async (
        - visualHint: 图标建议。
     4. disclaimer: 专业的免责声明。
 
-    严格遵循：所有文本必须是${targetLang}。内容要专业且富有洞察力。
+    严格遵循：所有文本必须是${targetLang}。内容要专业、客观且富有洞察力。
   `;
 
   const response = await ai.models.generateContent({
@@ -73,7 +89,7 @@ export const analyzeMedicalReport = async (
     contents: {
       parts: [
         { inlineData: { data: imageContent, mimeType: 'image/jpeg' } },
-        { text: `请严格以 ${targetLang} 提供深度分析。确保每个维度都有 conclusion 和至少 2 个 highlights。` }
+        { text: `请严格以 ${targetLang} 提供 10 个维度的深度分析。确保每个维度都有 conclusion 和至少 2 个 highlights。` }
       ]
     },
     config: {
@@ -106,19 +122,23 @@ export const analyzeMedicalReport = async (
     }
   });
 
-  const rawJson = JSON.parse(response.text);
+  const rawJson = JSON.parse(response.text || '{}');
   
-  // 异步生成背景插图
-  const illustration = await generateMedicalIllustration(rawJson.summary);
+  // Parallel processing for assets
+  const [illustration, audioData] = await Promise.all([
+    generateMedicalIllustration(rawJson.summary),
+    generateSummaryAudio(rawJson.summary)
+  ]);
 
   return {
-    id: Math.random().toString(36).substr(2, 9),
+    id: Math.random().toString(36).substring(2, 11),
     timestamp: Date.now(),
     reportType: rawJson.reportType as ReportType,
     dimensions: rawJson.dimensions as AnalysisDimension[],
     summary: rawJson.summary,
     disclaimer: rawJson.disclaimer,
-    generatedIllustration: illustration
+    generatedIllustration: illustration,
+    summaryAudio: audioData
   };
 };
 
@@ -148,7 +168,7 @@ export const chatAboutReport = async (
   `;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview',
     contents: history.map(h => ({
         role: h.role === 'user' ? 'user' : 'model',
         parts: [{ text: h.content }]
@@ -156,8 +176,23 @@ export const chatAboutReport = async (
     config: {
       systemInstruction,
       temperature: 0.7,
+      thinkingConfig: { thinkingBudget: 4000 }
     }
   });
 
   return response.text || "系统响应异常。";
+};
+
+export const testConnection = async (): Promise<boolean> => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: 'ping',
+    });
+    return !!response.text;
+  } catch (error) {
+    console.error("Connection test failed:", error);
+    return false;
+  }
 };
