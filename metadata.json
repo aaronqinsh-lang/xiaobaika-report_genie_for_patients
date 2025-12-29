@@ -1,0 +1,7 @@
+{
+  "name": "小白卡助手 - Cyber Noir",
+  "description": "一个面向未来的 AI 医疗报告分析助手，提供 10 维度深度解读。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
