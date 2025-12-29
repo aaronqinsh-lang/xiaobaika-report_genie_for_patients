@@ -21,6 +21,13 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 export const signInWithGoogle = async () => {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+      },
+    },
   });
   if (error) throw error;
 };
@@ -80,7 +87,6 @@ export const fetchSessionsFromCloud = async (userId: string) => {
   if (sessionsError && (sessionsError.message.includes('relationship') || sessionsError.code === 'PGRST200')) {
     console.warn("Supabase 架构缓存未刷新，尝试分步查询数据...");
     
-    // 先查 sessions
     const { data: sData, error: sErr } = await supabase
       .from('sessions')
       .select('*')
@@ -89,7 +95,6 @@ export const fetchSessionsFromCloud = async (userId: string) => {
     if (sErr) throw sErr;
     if (!sData || sData.length === 0) return [];
 
-    // 再查对应的 messages
     const sessionIds = sData.map(s => s.id);
     const { data: mData, error: mErr } = await supabase
       .from('messages')
@@ -98,7 +103,6 @@ export const fetchSessionsFromCloud = async (userId: string) => {
     
     if (mErr) throw mErr;
 
-    // 手动聚合数据
     rawSessions = sData.map(s => ({
       ...s,
       messages: (mData || []).filter(m => m.session_id === s.id)

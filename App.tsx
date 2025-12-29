@@ -54,7 +54,7 @@ const App: React.FC = () => {
         });
       } else {
         setUser(null);
-        setSessions([]); // 登出时清空会话
+        setSessions([]); 
       }
     };
     supabase.auth.getSession().then(({ data: { session } }) => handleSession(session));
@@ -81,8 +81,7 @@ const App: React.FC = () => {
             (typeof e?.message === 'string' && e.message.toLowerCase().includes('quota exceeded'));
 
           if (isQuotaError) {
-             errorMessage = "浏览器本地缓存已满，系统已尝试自动清理旧数据。请刷新页面。";
-             // 清理旧版本的所有可能缓存
+             errorMessage = "本地缓存溢出。";
              ['xiaobai-storage-v1', 'xiaobai-storage-v2', 'xiaobai-storage-v3', 'xiaobai-storage-v4', 'xiaobai-cloud-storage-v5'].forEach(k => localStorage.removeItem(k));
           } else if (typeof e === 'string') {
             errorMessage = e;
@@ -128,6 +127,35 @@ const App: React.FC = () => {
     } finally { setIsAnalyzing(false); }
   };
 
+  const handleRegenerate = async () => {
+    if (!currentSession || !user) return;
+    const originalMsg = currentSession.messages.find(m => !!m.analysis && !!m.image);
+    if (!originalMsg || !originalMsg.image) {
+      setError("找不到原始图片，无法重新构建。");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setError(null);
+    try {
+      const base64 = originalMsg.image.split(',')[1] || originalMsg.image;
+      const type = originalMsg.reportType || ReportType.UNKNOWN;
+      const newAnalysis = await analyzeMedicalReport(base64, type, Language.ZH);
+      
+      const updatedMessages = currentSession.messages.map(m => 
+        m.id === originalMsg.id ? { ...m, analysis: newAnalysis } : m
+      );
+      
+      const updatedSession = { ...currentSession, messages: updatedMessages };
+      updateSession(currentSession.id, updatedSession);
+      await saveSessionToCloud(updatedSession, user.id);
+    } catch (err: any) {
+      setError(`重新构建分析失败: ${err?.message || "未知错误"}`);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!chatInput.trim() || !currentSession || !lastAnalysis || !user) return;
     const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: chatInput };
@@ -152,7 +180,7 @@ const App: React.FC = () => {
   if (!user) return <Auth />;
 
   const t = {
-    ZH: { dashboard: '医疗终端', settings: 'AI模型配置', logout: '断开连接', history: '病例历史', newCase: '新建诊疗', start: '分析报告', chatPlaceholder: '关于报告我有疑问...', send: '发送指令' }
+    ZH: { dashboard: '医疗终端', settings: 'AI配置', logout: '登出', history: '病例历史', newCase: '新建诊疗', start: '分析报告', chatPlaceholder: '关于报告我有疑问...', send: '发送指令' }
   }.ZH;
 
   return (
@@ -168,14 +196,22 @@ const App: React.FC = () => {
               <p className="text-[10px] text-white/40 tracking-[0.2em] font-orbitron uppercase truncate max-w-[150px]">{user.display_name || user.email}</p>
             </div>
           </div>
-          <nav className="flex items-center space-x-4 md:space-x-6">
+          
+          <nav className="flex items-center space-x-4 md:space-x-8">
             <button onClick={() => setView('main')} className={`text-xs font-orbitron transition-all ${view === 'main' ? 'text-[#e94560] neon-text' : 'text-white/60 hover:text-white'}`}>{t.dashboard}</button>
             <button onClick={() => setView('settings')} className={`text-xs font-orbitron transition-all ${view === 'settings' ? 'text-[#e94560] neon-text' : 'text-white/60 hover:text-white'}`}>{t.settings}</button>
-            <button onClick={signOut} className="text-xs font-orbitron text-red-400/60 hover:text-red-400 transition-all">{t.logout}</button>
-            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-              <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}></span>
-              <span className="text-[9px] text-white/50 font-orbitron uppercase tracking-widest">{isSyncing ? '同步中' : '云端同步'}</span>
-            </div>
+            
+            <div className="h-4 w-[1px] bg-white/10 hidden md:block"></div>
+
+            <button 
+              onClick={signOut} 
+              className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all font-orbitron text-xs uppercase tracking-widest"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span>{t.logout}</span>
+            </button>
           </nav>
         </div>
       </header>
@@ -235,6 +271,7 @@ const App: React.FC = () => {
                           <MedicalAnalysisView 
                             messageId={msg.id} 
                             analysis={msg.analysis} 
+                            onRegenerate={handleRegenerate}
                           />
                         )}
                         {msg.role === 'user' ? (
